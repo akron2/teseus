@@ -10,9 +10,13 @@ Before proposing a change, run:
 
 ```sh
 PYTHONPATH=src python -m unittest discover -s tests -v
-python -m compileall -q src tests
+PYTHONPYCACHEPREFIX=/tmp/harness-pycache python -m compileall -q src tests
+PYTHONPATH=src python -c 'import harness, harness.cli, harness.engine, harness.memory, harness.openai_compatible, harness.persona, harness.storage, harness.telegram'
 python scripts/release_guard.py
 ```
 
-External adapters and capabilities require a separate threat/privacy review;
-model instructions alone cannot grant access or enforce isolation.
+External adapters and capabilities require tests with mocked transports and a
+threat/privacy review; model instructions alone cannot grant access or enforce
+isolation. Do not fill in an attribution or copyright owner without explicit
+owner confirmation. Apache-2.0 is retained, but attribution confirmation is a
+pre-release requirement.

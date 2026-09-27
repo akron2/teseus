@@ -1,10 +1,12 @@
 # Teseus Harness
 
 A local, single-owner harness for a personal agent with **memory, forgetting,
-and initiative**. This first staging version is a small, runnable vertical
-slice: local bootstrap, versioned SQLite schema, persona loading, a deterministic
-mock dialogue, and an explicit memory-selection journal. It uses Python 3.11+
-and the standard library; no network, provider account, or secret is needed.
+and initiative**. This local-only release candidate provides bootstrap,
+versioned SQLite state, persona loading, a deterministic mock dialogue, and
+explicit memory-selection journaling. Optional adapters provide
+OpenAI-compatible chat-completions over HTTPS and owner-only Telegram text
+polling. It uses Python 3.11+ and the standard library; the default mock needs
+no network, provider account, or secret.
 
 ## Quick start
 
@@ -39,21 +41,61 @@ For a single self-contained smoke run:
 PYTHONPATH=src python -m harness demo --data-dir ./local-state
 ```
 
+## Optional model provider
+
+The `Engine` contract is synchronous `generate(text, persona_name) ->
+EngineReply`. `MockEngine` remains the default and never uses the network. To
+select the optional OpenAI-compatible adapter, configure `HARNESS_ENGINE`,
+`HARNESS_OPENAI_API_KEY`, and `HARNESS_OPENAI_MODEL` in the process environment;
+`HARNESS_OPENAI_BASE_URL` defaults to `https://api.openai.com/v1` and
+`HARNESS_OPENAI_TIMEOUT` defaults to 30 seconds (allowed range: 0.1–120). The
+adapter sends only the current turn and persona name, and does not log prompts,
+keys, response bodies, or provider errors. Provider requests disclose the turn
+to the configured service. Dialogue content and responses are stored in local
+SQLite as before. Configuration is not read from TOML or `.env` automatically.
+
+```sh
+export HARNESS_ENGINE=openai-compatible
+export HARNESS_OPENAI_API_KEY  # Set this variable privately before exporting it.
+export HARNESS_OPENAI_MODEL='<provider model name>'
+PYTHONPATH=src python -m harness dialogue --data-dir ./local-state --text 'Hello'
+```
+
+## Optional owner-only Telegram
+
+Telegram is disabled unless explicitly enabled and `telegram-poll` is run. Set
+`HARNESS_TELEGRAM_ENABLED=true`, `HARNESS_TELEGRAM_BOT_TOKEN`, and comma-
+separated numeric `HARNESS_TELEGRAM_OWNER_IDS` in the environment. Long polling
+processes private text messages only; sender IDs are checked against the
+allowlist before the dialogue engine is called. Unknown senders receive a
+generic denial, and group chats, non-text updates, and malformed updates are
+ignored. The token is used only in HTTPS Bot API requests and is not logged.
+Never place a real token in source control.
+
+```sh
+PYTHONPATH=src python -m harness telegram-poll --data-dir ./local-state
+```
+
+Both adapters have mocked-transport unit tests and require no live credentials
+or network for the test suite. See [architecture](docs/ARCHITECTURE.md),
+[privacy](docs/PRIVACY.md), and [threat model](docs/THREATS.md).
+
 ## Boundaries and status
 
 - One local owner only. Guests and shared-memory access are unsupported and
   disabled. A prompt is not an access-control boundary.
-- Telegram, web, external model engines, attachments, mail, background
-  consolidation, and task execution are later-stage interfaces, not enabled
-  integrations in this slice.
+- Web, attachments, mail, background consolidation, and task execution are not
+  included. The provider and Telegram integrations above are optional and
+  disabled by default.
 - There is no shell/tool executor, host-write capability, privileged mode, or
   automatic external action. Initiative is a suggestion requiring a person.
 - The seed-memory is a public, synthetic example expressing a ship metaphor,
   selective/forgettable memory, context versus recollection, reversibility,
   verifiable trust, and bounded initiative. It contains no private dialogue.
-- This staging repository has a fresh, local-only history. Do not publish until
-  an owner has reviewed copyright ownership, the Apache-2.0 choice, the product
-  name, and every staged artifact.
+- This release candidate has a local-only history. Do not publish until an
+  owner confirms copyright ownership/attribution, the Apache-2.0 choice, the
+  product name, and every staged artifact. Attribution remains an explicit
+  release blocker; see [review](REVIEW.md).
 
 See [architecture](docs/ARCHITECTURE.md), [privacy](docs/PRIVACY.md),
 [threat model](docs/THREATS.md), and [security reporting](SECURITY.md).

@@ -1,4 +1,4 @@
-"""Engine protocol and credential-free deterministic implementation."""
+"""Abstract synchronous engine contract and credential-free default mock."""
 
 from dataclasses import dataclass
 from typing import Protocol
@@ -12,6 +12,10 @@ class EngineReply:
 
 class Engine(Protocol):
     def generate(self, text: str, persona_name: str) -> EngineReply: ...
+
+
+class EngineError(RuntimeError):
+    """Sanitized failure from an optional model adapter."""
 
 
 class MockEngine:

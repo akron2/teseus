@@ -8,10 +8,12 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from .engine import MockEngine
+from .engine import Engine
+from .openai_compatible import engine_from_environment
 from .memory import cycle, propose, restore
 from .persona import Persona
 from .storage import Store
+from .telegram import owner_ids_from_environment, poll_forever, telegram_from_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEED_DIR = REPO_ROOT / "profiles" / "teseus-seed"
@@ -65,9 +67,15 @@ def bootstrap(data_dir: Path, seed_teseus: bool = False) -> None:
     print(f"Bootstrapped local state; migrations applied: {applied or 'none'}")
 
 
-def run_dialogue(data_dir: Path, text: str, remember: str | None = None) -> str:
+def run_dialogue(
+    data_dir: Path,
+    text: str,
+    remember: str | None = None,
+    engine: Engine | None = None,
+) -> str:
     if not text.strip():
         raise ValueError("dialogue text must not be empty")
+    active_engine = engine if engine is not None else engine_from_environment()
     store = Store(data_dir / "harness.sqlite3")
     try:
         persona_data = store.load_persona(PERSONA_ID)
@@ -76,8 +84,10 @@ def run_dialogue(data_dir: Path, text: str, remember: str | None = None) -> str:
         conversation_id = str(uuid.uuid4())
         store.create_conversation(conversation_id, PERSONA_ID)
         store.add_message(conversation_id, "owner", text)
-        reply = MockEngine().generate(text, str(persona_data["name"]))
-        response = reply.text + "\n" + reply.initiative
+        reply = active_engine.generate(text, str(persona_data["name"]))
+        response = reply.text
+        if reply.initiative:
+            response += "\n" + reply.initiative
         store.add_message(conversation_id, "assistant", response)
         if remember is not None:
             propose(store, remember)
@@ -151,6 +161,8 @@ def parser() -> argparse.ArgumentParser:
     seed_sub = seed.add_subparsers(dest="seed_command", required=True)
     remove = seed_sub.add_parser("remove", help="remove installed seed memory and restore the neutral persona")
     remove.add_argument("--data-dir", type=Path, default=default_data_dir())
+    telegram = sub.add_parser("telegram-poll", help="run the explicitly enabled owner-only Telegram adapter")
+    telegram.add_argument("--data-dir", type=Path, default=default_data_dir())
     return root
 
 
@@ -164,6 +176,11 @@ def main() -> None:
         run_demo(args.data_dir)
     elif args.command == "seed":
         remove_seed(args.data_dir)
+    elif args.command == "telegram-poll":
+        client = telegram_from_environment()
+        owner_ids = owner_ids_from_environment()
+        engine = engine_from_environment()
+        poll_forever(client, owner_ids, lambda text: run_dialogue(args.data_dir, text, engine=engine))
     elif args.command == "memory":
         store = Store(args.data_dir / "harness.sqlite3")
         try:

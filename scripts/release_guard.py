@@ -1,6 +1,7 @@
 """Local allowlist and low-noise secret/privacy checks; never prints matches."""
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,6 +38,32 @@ def repo_files() -> set[str]:
     }
 
 
+def git_output(*args: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", *args], cwd=ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        )
+    except (OSError, subprocess.CalledProcessError):
+        raise RuntimeError("Git history inspection failed") from None
+    return result.stdout
+
+
+def history_blobs() -> list[tuple[str, str]]:
+    """Return reachable text blobs and paths from every local ref without printing contents."""
+
+    records: list[tuple[str, str]] = []
+    for line in git_output("rev-list", "--objects", "--all").decode("utf-8", errors="replace").splitlines():
+        parts = line.split(" ", 1)
+        object_id = parts[0]
+        if len(object_id) < 40 or any(character not in "0123456789abcdef" for character in object_id):
+            continue
+        object_type = git_output("cat-file", "-t", object_id).decode("ascii").strip()
+        if object_type == "blob":
+            path = parts[1] if len(parts) > 1 else "(path unavailable)"
+            records.append((path, object_id))
+    return records
+
+
 def main() -> int:
     if not MANIFEST.is_file():
         print("BLOCKED: public path manifest is missing")
@@ -47,8 +74,22 @@ def main() -> int:
         if line.strip() and not line.lstrip().startswith("#")
     }
     actual = repo_files()
+    symlinks = sorted(
+        path.relative_to(ROOT).as_posix() for path in ROOT.rglob("*") if path.is_symlink()
+    )
     unexpected, missing = sorted(actual - approved), sorted(approved - actual)
     errors = 0
+    try:
+        if git_output("remote").strip():
+            print("BLOCKED: Git remotes are configured")
+            errors += 1
+        blobs = history_blobs()
+    except RuntimeError as exc:
+        print(f"BLOCKED: {exc}")
+        return 1
+    if symlinks:
+        print("BLOCKED: symbolic links are not allowed in the public file set: " + ", ".join(symlinks))
+        errors += 1
     if unexpected:
         print("BLOCKED: paths outside the reviewed staging manifest:", ", ".join(unexpected))
         errors += 1
@@ -58,6 +99,8 @@ def main() -> int:
     hits: dict[str, set[str]] = {}
     for relative in sorted(actual & approved):
         path = ROOT / relative
+        if path.is_symlink():
+            continue
         try:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
@@ -67,6 +110,20 @@ def main() -> int:
         for label, pattern in content_rules():
             if pattern.search(content):
                 hits.setdefault(label, set()).add(relative)
+    history_hits: dict[str, set[str]] = {}
+    for historical_path, object_id in blobs:
+        try:
+            content = git_output("cat-file", "blob", object_id).decode("utf-8")
+        except UnicodeDecodeError:
+            history_hits.setdefault("non-text historical blob", set()).add(historical_path)
+            continue
+        for label, pattern in content_rules():
+            if pattern.search(historical_path) or pattern.search(content):
+                history_hits.setdefault(label, set()).add(historical_path)
+    if history_hits:
+        for label, paths in sorted(history_hits.items()):
+            print(f"BLOCKED: {label} in {len(paths)} historical blob(s): " + ", ".join(sorted(paths)))
+        errors += 1
     if hits:
         for label, paths in sorted(hits.items()):
             print(f"BLOCKED: {label} in {len(paths)} file(s): " + ", ".join(sorted(paths)))
@@ -74,7 +131,10 @@ def main() -> int:
     if errors:
         print("Release guard failed; matched values were suppressed.")
         return 1
-    print(f"Release guard passed: {len(actual)} allowlisted text files; no configured scan findings.")
+    print(
+        f"Release guard passed: {len(actual)} allowlisted text files and {len(blobs)} reachable history blobs; "
+        "no configured scan findings or remotes."
+    )
     return 0
 
 

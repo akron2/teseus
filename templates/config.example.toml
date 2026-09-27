@@ -3,9 +3,11 @@ data_dir = "${HOME}/.local/share/teseus-harness"
 
 [engine]
 provider = "mock"
+# Optional provider settings are environment-only; see .env.example.
 
 [features]
 guests = false
 web = false
 attachments = false
 task_execution = false
+telegram = false

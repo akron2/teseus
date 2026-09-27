@@ -5,6 +5,7 @@
 CONTRIBUTING.md
 LICENSE
 README.md
+REVIEW.md
 SECURITY.md
 docs/ARCHITECTURE.md
 docs/PRIVACY.md
@@ -21,11 +22,14 @@ src/harness/__main__.py
 src/harness/cli.py
 src/harness/engine.py
 src/harness/memory.py
+src/harness/openai_compatible.py
 src/harness/persona.py
 src/harness/storage.py
+src/harness/telegram.py
 templates/config.example.toml
 templates/memory/README.md
 templates/memory/owner-profile.md
 templates/system-instruction.md
 tests/test_defaults.py
+tests/test_adapters.py
 tests/test_vertical_slice.py

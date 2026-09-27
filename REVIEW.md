@@ -20,10 +20,10 @@ review, а не legal review и не доказательство отсутст
 | `docs/ARCHITECTURE.md` | Описывала только mock; дополнена контрактом, транспортными границами, отказами без раскрытия тела ответа и ограничениями передачи данных. |
 | `docs/PRIVACY.md` | Уточнены данные, отправляемые provider-у и Telegram, локальное хранение и отсутствие сетевых вызовов по умолчанию. |
 | `docs/THREATS.md` | Пересмотрена граница для remote model и Telegram; документированы HTTPS, allowlist-before-dispatch и остающиеся ограничения. |
-| `migrations/0001_initial.sql` | SQL статический; внешние значения параметризуются приложением. Ограничения ролей и owner-only scope сохранены. |
-| `profiles/teseus-seed/README.md` | Seed прямо обозначен синтетическим/публичным, опциональным и не являющимся записью реальных событий; сохранён. |
-| `profiles/teseus-seed/persona.json` | Только публичная synthetic persona, без реальных разговоров или идентификаторов; сохранена. |
-| `profiles/teseus-seed/seed-memory.json` | Только публичные synthetic идеи; сохранён состав seed и имя `teseus-harness`. |
+| `src/harness/data/migrations/0001_initial.sql` | SQL статический; внешние значения параметризуются приложением. Ограничения ролей и owner-only scope сохранены; migration входит в wheel. |
+| `src/harness/data/profiles/teseus-seed/README.md` | Seed прямо обозначен синтетическим/публичным, опциональным и не являющимся записью реальных событий; сохранён в wheel. |
+| `src/harness/data/profiles/teseus-seed/persona.json` | Только публичная synthetic persona, без реальных разговоров или идентификаторов; включена в wheel. |
+| `src/harness/data/profiles/teseus-seed/seed-memory.json` | Только публичные synthetic идеи; сохранён состав seed и имя `teseus-harness`, файл включён в wheel. |
 | `pyproject.toml` | Зависимости отсутствуют, Python 3.11+ и Apache-2.0 заданы; metadata/license оставлены без фиктивного attribution. |
 | `scripts/public-files.txt` | Allowlist расширен на review, adapters и mocked tests, чтобы новые артефакты были явными. |
 | `scripts/release_guard.py` | Исходный guard сканировал только текущие файлы и не проверял Git history, remotes или symlinks. Исправлено: проверяются достижимые исторические blobs, текущие allowlisted файлы, remotes и ссылки; совпавшие значения не выводятся. |
@@ -52,9 +52,13 @@ review, а не legal review и не доказательство отсутст
   группа исключена. Sender ID проверяется до callback, вызывающего engine;
   незнакомый пользователь получает общий отказ. Ошибки не раскрывают URL/token.
 - `tests/test_adapters.py`: реальные сетевые вызовы отсутствуют; проверяются
-  provider request и интеграция с dialogue, sanitized errors, отключённый
-  default, Telegram allow/deny до dispatch, запрет group chat и environment
-  requirements.
+  provider request и интеграция с dialogue, отсутствующая/невалидная
+  конфигурация, timeout/error sanitization, malformed Telegram updates,
+  отключённый default, неизвестный owner до dispatch, запрет group chat и
+  environment requirements.
+- Runtime migration и публичные seed assets размещены как package data, а
+  установленные wheel/sdist проверены в отдельных локальных virtualenv;
+  release guard учитывает эти assets и helper нормализации sdist.
 - Документация описывает opt-in сетевые потоки и их последствия; CI импортирует
   оба adapter. Release guard работает по текущему дереву и reachable history.
 

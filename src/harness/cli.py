@@ -15,8 +15,7 @@ from .persona import Persona
 from .storage import Store
 from .telegram import owner_ids_from_environment, poll_forever, telegram_from_environment
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SEED_DIR = REPO_ROOT / "profiles" / "teseus-seed"
+SEED_DIR = Path(__file__).resolve().parent / "data" / "profiles" / "teseus-seed"
 PERSONA_ID = "local-owner"
 
 

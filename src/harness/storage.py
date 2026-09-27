@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-MIGRATION_DIR = Path(__file__).resolve().parents[2] / "migrations"
+MIGRATION_DIR = Path(__file__).resolve().parent / "data" / "migrations"
 
 
 def utc_now() -> str:

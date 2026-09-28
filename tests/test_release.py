@@ -150,6 +150,68 @@ class ReleaseHelpersTests(unittest.TestCase):
         private_host = ".".join(("build-host", "internal"))
         self.assertRegex(private_host, release_guard.private_hostname_rule())
 
+    def test_github_tag_checkout_fetches_full_history_and_annotated_tag_object(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote = root / "remote.git"
+            source = root / "source"
+            checkout = root / "checkout"
+            remote.mkdir()
+            source.mkdir()
+            subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=source, check=True)
+            subprocess.run(["git", "config", "user.name", "Checkout Fixture"], cwd=source, check=True)
+            subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=source, check=True)
+            (source / "history.txt").write_text("first\n", encoding="utf-8")
+            subprocess.run(["git", "add", "history.txt"], cwd=source, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "first"], cwd=source, check=True)
+            (source / "history.txt").write_text("first\nsecond\n", encoding="utf-8")
+            subprocess.run(["git", "commit", "-qam", "second"], cwd=source, check=True)
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=source, check=True, text=True, capture_output=True
+            ).stdout.strip()
+            tag = "v0.1.0-rc-test"
+            subprocess.run(["git", "tag", "-a", tag, "-m", "checkout fixture"], cwd=source, check=True)
+            subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
+            subprocess.run(["git", "push", "-q", "origin", "main", f"refs/tags/{tag}"], cwd=source, check=True)
+
+            # The previous shallow commit-only checkout had neither history nor the local tag ref.
+            subprocess.run(
+                ["git", "clone", "-q", "--depth=1", "--no-tags", "--branch", "main", remote.as_uri(), str(checkout)],
+                check=True,
+            )
+            subprocess.run(["git", "checkout", "-q", "--detach", commit], cwd=checkout, check=True)
+            old_tag_type = subprocess.run(
+                ["git", "cat-file", "-t", f"refs/tags/{tag}"], cwd=checkout, text=True,
+                capture_output=True, check=False,
+            )
+            self.assertNotEqual(old_tag_type.returncode, 0)
+            self.assertTrue((checkout / ".git/shallow").exists())
+
+            # Model fetch-depth: 0 plus the workflow's exact-tag fetch.
+            subprocess.run(["git", "fetch", "--unshallow", "--no-tags", "origin"], cwd=checkout, check=True)
+            subprocess.run(
+                ["git", "fetch", "--no-tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}"],
+                cwd=checkout,
+                check=True,
+            )
+            tag_type = subprocess.run(
+                ["git", "cat-file", "-t", f"refs/tags/{tag}"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            peeled_commit = subprocess.run(
+                ["git", "rev-parse", f"refs/tags/{tag}^{{commit}}"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertEqual(tag_type, "tag")
+            self.assertEqual(peeled_commit, commit)
+            self.assertFalse((checkout / ".git/shallow").exists())
+            history_size = subprocess.run(
+                ["git", "rev-list", "--count", "HEAD"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertEqual(history_size, "2")
+
 
 if __name__ == "__main__":
     unittest.main()

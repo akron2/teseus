@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc4 — 2026-09-28
+
+Make release jobs fetch the full Git history and annotated tag object explicitly,
+and block artifact building unless the checked-out release tag is locally
+available as the expected annotated tag.
+
 ## 0.1.0-rc3 — 2026-09-28
 
 Retire the failed prior release candidate and make release-tag metadata

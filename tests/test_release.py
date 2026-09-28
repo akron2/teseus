@@ -150,7 +150,7 @@ class ReleaseHelpersTests(unittest.TestCase):
         private_host = ".".join(("build-host", "internal"))
         self.assertRegex(private_host, release_guard.private_hostname_rule())
 
-    def test_github_tag_checkout_fetches_full_history_and_annotated_tag_object(self) -> None:
+    def test_github_tag_fetch_replaces_checkout_lightweight_tag_with_remote_annotated_tag(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             remote = root / "remote.git"
@@ -181,20 +181,28 @@ class ReleaseHelpersTests(unittest.TestCase):
                 check=True,
             )
             subprocess.run(["git", "checkout", "-q", "--detach", commit], cwd=checkout, check=True)
-            old_tag_type = subprocess.run(
-                ["git", "cat-file", "-t", f"refs/tags/{tag}"], cwd=checkout, text=True,
-                capture_output=True, check=False,
+            # actions/checkout can leave a lightweight local tag at the target
+            # commit; fetching the annotated object without force then fails.
+            subprocess.run(["git", "tag", tag, commit], cwd=checkout, check=True)
+            old_fetch = subprocess.run(
+                ["git", "fetch", "--no-tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}"],
+                cwd=checkout, text=True, capture_output=True, check=False,
             )
-            self.assertNotEqual(old_tag_type.returncode, 0)
+            self.assertNotEqual(old_fetch.returncode, 0)
+            self.assertIn("would clobber existing tag", old_fetch.stderr)
             self.assertTrue((checkout / ".git/shallow").exists())
 
-            # Model fetch-depth: 0 plus the workflow's exact-tag fetch.
+            # Model fetch-depth: 0 and run the exact helper used by the workflow.
             subprocess.run(["git", "fetch", "--unshallow", "--no-tags", "origin"], cwd=checkout, check=True)
-            subprocess.run(
-                ["git", "fetch", "--no-tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}"],
+            result = subprocess.run(
+                ["bash", str(release.ROOT / "scripts/fetch_release_tag.sh")],
                 cwd=checkout,
-                check=True,
+                env=dict(os.environ, RELEASE_REF=f"refs/tags/{tag}", RELEASE_TAG=tag),
+                text=True,
+                capture_output=True,
+                check=False,
             )
+            self.assertEqual(result.returncode, 0, result.stderr)
             tag_type = subprocess.run(
                 ["git", "cat-file", "-t", f"refs/tags/{tag}"], cwd=checkout, check=True,
                 text=True, capture_output=True,
@@ -205,12 +213,64 @@ class ReleaseHelpersTests(unittest.TestCase):
             ).stdout.strip()
             self.assertEqual(tag_type, "tag")
             self.assertEqual(peeled_commit, commit)
+            remote_tag_object = subprocess.run(
+                ["git", "rev-parse", f"refs/tags/{tag}"], cwd=source, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            fetched_tag_object = subprocess.run(
+                ["git", "rev-parse", f"refs/tags/{tag}"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertEqual(fetched_tag_object, remote_tag_object)
             self.assertFalse((checkout / ".git/shallow").exists())
             history_size = subprocess.run(
                 ["git", "rev-list", "--count", "HEAD"], cwd=checkout, check=True,
                 text=True, capture_output=True,
             ).stdout.strip()
             self.assertEqual(history_size, "2")
+
+    def test_github_tag_fetch_rejects_invalid_ref_without_shell_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote = root / "remote.git"
+            source = root / "source"
+            checkout = root / "checkout"
+            remote.mkdir()
+            source.mkdir()
+            subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+            commit = self.make_git_fixture(source)
+            tag = "v0.1.0-rc-test"
+            subprocess.run(["git", "tag", "-a", tag, "-m", "fixture"], cwd=source, check=True)
+            subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
+            subprocess.run(["git", "push", "-q", "origin", "main", f"refs/tags/{tag}"], cwd=source, check=True)
+            subprocess.run(
+                ["git", "clone", "-q", "--no-tags", "--branch", "main", remote.as_uri(), str(checkout)],
+                check=True,
+            )
+            subprocess.run(["git", "tag", tag, commit], cwd=checkout, check=True)
+
+            marker = root / "must-not-exist"
+            invalid_tag = f"{tag};touch {marker}"
+            result = subprocess.run(
+                ["bash", str(release.ROOT / "scripts/fetch_release_tag.sh")],
+                cwd=checkout,
+                env=dict(
+                    os.environ,
+                    RELEASE_REF=f"refs/tags/{invalid_tag}",
+                    RELEASE_TAG=invalid_tag,
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(marker.exists())
+            local_tag_type = subprocess.run(
+                ["git", "cat-file", "-t", f"refs/tags/{tag}"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertEqual(local_tag_type, "commit")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc5 — 2026-09-28
+
+Safely replace a checkout-created local lightweight release tag with the exact
+remote annotated tag object in the ephemeral release runner, and cover tag
+clobbering and invalid ref names with regression tests.
+
 ## 0.1.0-rc4 — 2026-09-28
 
 Make release jobs fetch the full Git history and annotated tag object explicitly,

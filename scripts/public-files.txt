@@ -18,6 +18,7 @@ docs/PRIVACY.md
 docs/THREATS.md
 pyproject.toml
 scripts/public-files.txt
+scripts/fetch_release_tag.sh
 scripts/release.py
 scripts/normalize_sdist.py
 scripts/release_guard.py

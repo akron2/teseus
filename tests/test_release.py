@@ -221,6 +221,8 @@ class ReleaseHelpersTests(unittest.TestCase):
             subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
             commit = self.make_git_fixture(source)
             tag = "v0.1.0-rc-test"
+            subprocess.run(["git", "config", "user.name", "Fixture Tagger"], cwd=source, check=True)
+            subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=source, check=True)
             subprocess.run(["git", "tag", "-a", tag, "-m", "fixture"], cwd=source, check=True)
             subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
             subprocess.run(["git", "push", "-q", "origin", "main", f"refs/tags/{tag}"], cwd=source, check=True)

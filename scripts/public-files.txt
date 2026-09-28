@@ -42,3 +42,4 @@ tests/test_defaults.py
 tests/test_release.py
 tests/test_adapters.py
 tests/test_vertical_slice.py
+docs/MAINTENANCE_BRIDGE.md

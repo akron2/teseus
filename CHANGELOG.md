@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc6 — 2026-09-28
+
+Keep release verification bytecode out of the reviewed source tree so the
+privacy guard can pass in a clean GitHub Actions runner. This fresh candidate
+follows the failed, permanently retired rc5 tag; rc5 remains unchanged.
+
 ## 0.1.0-rc5 — 2026-09-28
 
 Safely replace a checkout-created local lightweight release tag with the exact

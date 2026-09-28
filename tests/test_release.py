@@ -189,7 +189,11 @@ class ReleaseHelpersTests(unittest.TestCase):
                 cwd=checkout, text=True, capture_output=True, check=False,
             )
             self.assertNotEqual(old_fetch.returncode, 0)
-            self.assertIn("would clobber existing tag", old_fetch.stderr)
+            still_lightweight = subprocess.run(
+                ["git", "rev-parse", f"refs/tags/{tag}"], cwd=checkout, check=True,
+                text=True, capture_output=True,
+            ).stdout.strip()
+            self.assertEqual(still_lightweight, commit)
             self.assertTrue((checkout / ".git/shallow").exists())
 
             # Model fetch-depth: 0 and run the exact helper used by the workflow.

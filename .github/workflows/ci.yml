@@ -18,15 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run unit tests
-        run: |
-          set +e
-          python -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/unittest.log"
-          result=${PIPESTATUS[0]}
-          if (( result != 0 )); then
-            python -c 'import os,re; from pathlib import Path; lines=(Path(os.environ["RUNNER_TEMP"])/"unittest.log").read_text().splitlines(); failures=[" -> ".join([line.strip(), *[detail.strip() for detail in lines[i+1:i+8]]]) for i,line in enumerate(lines) if re.match(r"\s*(FAIL|ERROR):",line)]; print("::error title=Unit test failures::" + " | ".join(failures)) if failures else None'
-          fi
-          exit "$result"
+      - run: python -m unittest discover -s tests -v
         env:
           PYTHONPATH: src
           PYTHONDONTWRITEBYTECODE: "1"

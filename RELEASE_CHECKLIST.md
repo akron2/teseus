@@ -9,7 +9,8 @@
   fail-closed, and package-content checks without live credentials or network.
 - [x] Verify documented local README commands in isolated temporary state.
 - [x] Create reproducible local artifacts and SHA-256 checksums.
-- [x] Keep release candidate and Git tag local; configure no remote.
+- [x] Route publication through an annotated SemVer tag and the guarded release
+  workflow; never publish to PyPI.
 
 ## Publication authorization
 
@@ -25,7 +26,8 @@
   owner-ID allowlist before any live integration use. This is not required for
   the default offline mock or for publication of the source.
 
-## Live checks intentionally not performed
+## Integration boundaries
 
-- Provider/Telegram requests, real credentials, external CI, and publishing were
-  not used. Validate such integrations only after the owner decisions above.
+- Provider/Telegram requests and real credentials are not needed for package
+  publication and remain untested. The GitHub Actions/release run for each
+  published tag is the record of external build and publication checks.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-rc2 — 2026-09-28
+
+Document and automate the reviewed public release process. Add a guarded
+maintainer release command, reproducible artifact verification, and a
+least-privilege GitHub Actions workflow for public GitHub Releases.
+
 ## 0.1.0 — 2026-09-27
 
 Initial 0.1.0 release candidate for Teseus, based on the reviewed release

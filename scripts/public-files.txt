@@ -1,12 +1,14 @@
 # Exact reviewed staging inventory. Runtime databases and generated artifacts are excluded.
 .env.example
 .github/workflows/ci.yml
+.github/workflows/release.yml
 .gitignore
 CHANGELOG.md
 CONTRIBUTING.md
 LICENSE
 MANIFEST.in
 README.md
+RELEASE.md
 RELEASE_CHECKLIST.md
 REVIEW.md
 SECURITY.md
@@ -16,6 +18,7 @@ docs/PRIVACY.md
 docs/THREATS.md
 pyproject.toml
 scripts/public-files.txt
+scripts/release.py
 scripts/normalize_sdist.py
 scripts/release_guard.py
 src/harness/data/migrations/0001_initial.sql
@@ -36,5 +39,6 @@ templates/memory/README.md
 templates/memory/owner-profile.md
 templates/system-instruction.md
 tests/test_defaults.py
+tests/test_release.py
 tests/test_adapters.py
 tests/test_vertical_slice.py

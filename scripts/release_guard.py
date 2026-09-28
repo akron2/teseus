@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "scripts" / "public-files.txt"
@@ -48,6 +49,26 @@ def git_output(*args: str) -> bytes:
     return result.stdout
 
 
+def public_origin_is_valid(remote_names: list[str], remote_urls: list[str]) -> bool:
+    """Accept only the one expected public origin; never expose its URL."""
+
+    if remote_names != ["origin"] or len(remote_urls) != 1:
+        return not remote_names and not remote_urls
+    value = remote_urls[0]
+    if "@" in value.split(":", 1)[0] and value.startswith("https://"):
+        return False
+    https = urlsplit(value)
+    if https.scheme == "https" and https.hostname == "github.com" and not https.username:
+        return (
+            https.port in (None, 443)
+            and https.path.rstrip("/") in {"/akron2/teseus", "/akron2/teseus.git"}
+            and not https.query
+            and not https.fragment
+        )
+    match = re.fullmatch(r"git@(github\.com|teseus-github):akron2/teseus(?:\.git)?", value)
+    return match is not None
+
+
 def history_blobs() -> list[tuple[str, str]]:
     """Return reachable text blobs and paths from every local ref without printing contents."""
 
@@ -80,8 +101,13 @@ def main() -> int:
     unexpected, missing = sorted(actual - approved), sorted(approved - actual)
     errors = 0
     try:
-        if git_output("remote").strip():
-            print("BLOCKED: Git remotes are configured")
+        remote_names = git_output("remote").decode("utf-8", errors="replace").splitlines()
+        remote_urls = [
+            git_output("remote", "get-url", "--all", name).decode("utf-8", errors="replace").strip()
+            for name in remote_names
+        ]
+        if not public_origin_is_valid(remote_names, remote_urls):
+            print("BLOCKED: Git remotes are not limited to the expected public origin")
             errors += 1
         blobs = history_blobs()
     except RuntimeError as exc:
@@ -133,7 +159,7 @@ def main() -> int:
         return 1
     print(
         f"Release guard passed: {len(actual)} allowlisted text files and {len(blobs)} reachable history blobs; "
-        "no configured scan findings or remotes."
+        "no configured scan findings or unexpected remotes."
     )
     return 0
 

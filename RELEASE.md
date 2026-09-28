@@ -4,8 +4,9 @@ This repository is the reviewed public source projection. Never copy files
 automatically from another working tree. For each intended change, review the
 diff, confirm every added/changed path belongs in `scripts/public-files.txt`,
 and run `python scripts/release_guard.py`. The guard checks the allowlist,
-symlinks, configured public origin, current files, and every reachable Git
-history blob; a finding blocks publication and matched content is suppressed.
+symlinks, configured public origin, current files, every reachable Git history
+blob, and reachable ref/commit/annotated-tag metadata; a finding blocks
+publication and matched content is suppressed.
 
 Update `CHANGELOG.md` with the release entry. Keep `VERSION`,
 `pyproject.toml`, and `harness.__version__` aligned. A prerelease tag such as

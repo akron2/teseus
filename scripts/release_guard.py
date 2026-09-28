@@ -1,6 +1,7 @@
 """Local allowlist and low-noise secret/privacy checks; never prints matches."""
 
 import re
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,73 @@ def history_blobs() -> list[tuple[str, str]]:
     return records
 
 
+def private_hostname_rule() -> re.Pattern[str]:
+    return re.compile(
+        r"(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"(?:local|internal|lan|home|corp|private)\b"
+    )
+
+
+def history_metadata() -> dict[str, set[str]]:
+    """Return privacy findings in reachable refs and commit/tag metadata."""
+
+    references = git_output("for-each-ref", "--format=%(refname)%09%(objectname)%09%(objecttype)")
+    object_ids = set(git_output("rev-list", "--all").decode("ascii").splitlines())
+    for line in references.decode("utf-8", errors="replace").splitlines():
+        fields = line.split("\t")
+        if len(fields) == 3 and fields[2] == "tag":
+            object_ids.add(fields[1])
+
+    hostname = socket.gethostname().strip()
+    hostname_pattern = (
+        re.compile(r"(?i)(?<![a-z0-9-])" + re.escape(hostname) + r"(?![a-z0-9-])")
+        if hostname
+        else None
+    )
+    findings: dict[str, set[str]] = {}
+    private_hostname = private_hostname_rule()
+    for object_id in sorted(object_ids):
+        try:
+            object_type = git_output("cat-file", "-t", object_id).decode("ascii").strip()
+            if object_type not in {"commit", "tag"}:
+                continue
+            raw = git_output("cat-file", object_type, object_id)
+        except RuntimeError:
+            raise RuntimeError("Git history inspection failed") from None
+
+        header, separator, message = raw.partition(b"\n\n")
+        searchable_lines = []
+        for line in header.splitlines():
+            # Git identity timestamps are machine-generated metadata, not numeric identifiers.
+            line = re.sub(rb"\s[0-9]+ [+-][0-9]{4}$", b"", line)
+            searchable_lines.append(line)
+        searchable = b"\n".join(searchable_lines)
+        if separator:
+            searchable += b"\n" + message
+        decoded = searchable.decode("utf-8", errors="replace")
+        for label, pattern in [*content_rules(), ("private hostname", private_hostname)]:
+            if pattern.search(decoded):
+                findings.setdefault(label, set()).add(object_id)
+        if hostname_pattern and hostname_pattern.search(decoded):
+            findings.setdefault("local hostname", set()).add(object_id)
+
+    for line in references.decode("utf-8", errors="replace").splitlines():
+        refname = line.split("\t", 1)[0]
+        for label, pattern in [*content_rules(), ("private hostname", private_hostname)]:
+            if pattern.search(refname):
+                findings.setdefault(label, set()).add("ref:" + refname)
+        if hostname_pattern and hostname_pattern.search(refname):
+            findings.setdefault("local hostname", set()).add("ref:" + refname)
+    return findings
+
+
+def current_hostname_pattern() -> re.Pattern[str] | None:
+    hostname = socket.gethostname().strip()
+    if not hostname:
+        return None
+    return re.compile(r"(?i)(?<![a-z0-9-])" + re.escape(hostname) + r"(?![a-z0-9-])")
+
+
 def main() -> int:
     if not MANIFEST.is_file():
         print("BLOCKED: public path manifest is missing")
@@ -110,6 +178,7 @@ def main() -> int:
             print("BLOCKED: Git remotes are not limited to the expected public origin")
             errors += 1
         blobs = history_blobs()
+        metadata_hits = history_metadata()
     except RuntimeError as exc:
         print(f"BLOCKED: {exc}")
         return 1
@@ -123,6 +192,7 @@ def main() -> int:
         print("BLOCKED: manifest entries not present:", ", ".join(missing))
         errors += 1
     hits: dict[str, set[str]] = {}
+    local_hostname = current_hostname_pattern()
     for relative in sorted(actual & approved):
         path = ROOT / relative
         if path.is_symlink():
@@ -136,6 +206,8 @@ def main() -> int:
         for label, pattern in content_rules():
             if pattern.search(content):
                 hits.setdefault(label, set()).add(relative)
+        if local_hostname and (local_hostname.search(relative) or local_hostname.search(content)):
+            hits.setdefault("local hostname", set()).add(relative)
     history_hits: dict[str, set[str]] = {}
     for historical_path, object_id in blobs:
         try:
@@ -146,9 +218,17 @@ def main() -> int:
         for label, pattern in content_rules():
             if pattern.search(historical_path) or pattern.search(content):
                 history_hits.setdefault(label, set()).add(historical_path)
+        if local_hostname and (
+            local_hostname.search(historical_path) or local_hostname.search(content)
+        ):
+            history_hits.setdefault("local hostname", set()).add(historical_path)
     if history_hits:
         for label, paths in sorted(history_hits.items()):
             print(f"BLOCKED: {label} in {len(paths)} historical blob(s): " + ", ".join(sorted(paths)))
+        errors += 1
+    if metadata_hits:
+        for label, objects in sorted(metadata_hits.items()):
+            print(f"BLOCKED: {label} in {len(objects)} reachable ref/commit/tag metadata object(s)")
         errors += 1
     if hits:
         for label, paths in sorted(hits.items()):
@@ -158,7 +238,8 @@ def main() -> int:
         print("Release guard failed; matched values were suppressed.")
         return 1
     print(
-        f"Release guard passed: {len(actual)} allowlisted text files and {len(blobs)} reachable history blobs; "
+        f"Release guard passed: {len(actual)} allowlisted text files, {len(blobs)} reachable history blobs, "
+        "and reachable ref/commit/tag metadata; "
         "no configured scan findings or unexpected remotes."
     )
     return 0

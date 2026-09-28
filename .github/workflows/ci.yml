@@ -24,7 +24,7 @@ jobs:
           python -m unittest discover -s tests -v 2>&1 | tee "$RUNNER_TEMP/unittest.log"
           result=${PIPESTATUS[0]}
           if (( result != 0 )); then
-            python -c 'import os,re; from pathlib import Path; lines=(Path(os.environ["RUNNER_TEMP"])/"unittest.log").read_text().splitlines(); failures=[line.strip() for line in lines if re.match(r"\s*(FAIL|ERROR):", line)]; details=[line.strip() for line in lines if re.match(r"\s*(AssertionError|[A-Za-z]+Error|RuntimeError):", line)]; print("::error title=Unit test failures::" + " | ".join(failures+details)) if failures else None'
+            python -c 'import os,re; from pathlib import Path; lines=(Path(os.environ["RUNNER_TEMP"])/"unittest.log").read_text().splitlines(); failures=[" -> ".join([line.strip(), *[detail.strip() for detail in lines[i+1:i+8]]]) for i,line in enumerate(lines) if re.match(r"\s*(FAIL|ERROR):",line)]; print("::error title=Unit test failures::" + " | ".join(failures)) if failures else None'
           fi
           exit "$result"
         env:

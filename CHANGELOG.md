@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-rc7 — 2026-09-28
+
+Provide an explicit repository target to the artifact-only publish job so the
+GitHub CLI can create the public prerelease without a local checkout.
+
 ## 0.1.0-rc6 — 2026-09-28
 
 Keep release verification bytecode out of the reviewed source tree so the

@@ -17,6 +17,5 @@ python scripts/release_guard.py
 
 External adapters and capabilities require tests with mocked transports and a
 threat/privacy review; model instructions alone cannot grant access or enforce
-isolation. Do not fill in an attribution or copyright owner without explicit
-owner confirmation. Apache-2.0 is retained, but attribution confirmation is a
-pre-release requirement.
+isolation. Do not invent a copyright holder or attribution. The project is
+licensed under Apache-2.0; retain verified notices where applicable.

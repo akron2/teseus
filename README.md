@@ -1,4 +1,4 @@
-# Teseus Harness
+# Teseus
 
 A local, single-owner harness for a personal agent with **memory, forgetting,
 and initiative**. This local-only release candidate provides bootstrap,
@@ -92,10 +92,10 @@ or network for the test suite. See [architecture](docs/ARCHITECTURE.md),
 - The seed-memory is a public, synthetic example expressing a ship metaphor,
   selective/forgettable memory, context versus recollection, reversibility,
   verifiable trust, and bounded initiative. It contains no private dialogue.
-- This release candidate has a local-only history. Do not publish until an
-  owner confirms copyright ownership/attribution, the Apache-2.0 choice, the
-  product name, and every staged artifact. Attribution remains an explicit
-  release blocker; see [review](REVIEW.md).
+- The project and repository name is `teseus`; the included license is
+  Apache-2.0. The initial source history and tracked files were checked with
+  the repository's release guard. See [review](REVIEW.md) for its scope and
+  limitations.
 
 See [architecture](docs/ARCHITECTURE.md), [privacy](docs/PRIVACY.md),
 [threat model](docs/THREATS.md), and [security reporting](SECURITY.md).

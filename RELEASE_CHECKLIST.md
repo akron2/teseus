@@ -11,16 +11,19 @@
 - [x] Create reproducible local artifacts and SHA-256 checksums.
 - [x] Keep release candidate and Git tag local; configure no remote.
 
-## Required owner decisions before public release
+## Publication authorization
 
-- [ ] Confirm copyright ownership and authority to license every included file.
-- [ ] Confirm Apache-2.0 is the intended and applicable license. No personal
-  copyright holder or attribution has been invented in this candidate.
-- [ ] Confirm rights to use the Teseus Harness name and approve the complete
-  source and generated package contents.
+- [x] Owner authorized public GitHub publication as repository `teseus` under
+  Apache-2.0 in task #210; no individual copyright holder or attribution was
+  invented.
+- [x] README, license, tracked file set, and reachable Git history were checked
+  locally with the repository's release guard.
+
+## Before using live integrations
+
 - [ ] Review provider and Telegram data flows, operational settings, and the
-  owner-ID allowlist before any live integration use.
-- [ ] Perform final legal and release review before any publication.
+  owner-ID allowlist before any live integration use. This is not required for
+  the default offline mock or for publication of the source.
 
 ## Live checks intentionally not performed
 

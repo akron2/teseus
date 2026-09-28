@@ -223,6 +223,7 @@ class ReleaseHelpersTests(unittest.TestCase):
             tag = "v0.1.0-rc-test"
             subprocess.run(["git", "config", "user.name", "Fixture Tagger"], cwd=source, check=True)
             subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=source, check=True)
+            subprocess.run(["git", "config", "tag.gpgSign", "false"], cwd=source, check=True)
             subprocess.run(["git", "tag", "-a", tag, "-m", "fixture"], cwd=source, check=True)
             subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
             subprocess.run(["git", "push", "-q", "origin", "main", f"refs/tags/{tag}"], cwd=source, check=True)
@@ -230,6 +231,10 @@ class ReleaseHelpersTests(unittest.TestCase):
                 ["git", "clone", "-q", "--no-tags", "--branch", "main", remote.as_uri(), str(checkout)],
                 check=True,
             )
+            # Ensure the fixture models the checkout-created lightweight ref,
+            # even if a Git implementation followed the remote tag on clone.
+            subprocess.run(["git", "update-ref", "-d", f"refs/tags/{tag}"], cwd=checkout, check=False)
+            subprocess.run(["git", "config", "tag.gpgSign", "false"], cwd=checkout, check=True)
             subprocess.run(["git", "tag", tag, commit], cwd=checkout, check=True)
 
             old_fetch = subprocess.run(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 import socket
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -42,7 +43,88 @@ class ReleaseHelpersTests(unittest.TestCase):
         self.assertIn("demo", [argument for command in commands for argument in command])
 
     def test_current_release_metadata_is_aligned(self) -> None:
-        self.assertEqual(release.check_version("v0.1.0-rc2"), ("0.1.0", "rc2"))
+        self.assertEqual(release.check_version("v0.1.0-rc3"), ("0.1.0", "rc3"))
+        with self.assertRaisesRegex(release.ReleaseError, "retired"):
+            release.check_version("v0.1.0-rc2")
+
+    def make_git_fixture(self, root: Path) -> str:
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        (root / ".gitignore").write_text("", encoding="utf-8")
+        (root / "sample.txt").write_text("safe tree\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        env = dict(
+            os.environ,
+            GIT_AUTHOR_NAME="Neutral Fixture",
+            GIT_AUTHOR_EMAIL="fixture@example.invalid",
+            GIT_COMMITTER_NAME="Neutral Fixture",
+            GIT_COMMITTER_EMAIL="fixture@example.invalid",
+        )
+        subprocess.run(["git", "commit", "-q", "-m", "safe fixture"], cwd=root, env=env, check=True)
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True, text=True, capture_output=True
+        ).stdout.strip()
+
+    def test_tag_creation_ignores_hostile_git_identity_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            home = Path(directory) / "hostile-home"
+            root.mkdir()
+            home.mkdir()
+            commit = self.make_git_fixture(root)
+            hostile = socket.gethostname()
+            (home / ".gitconfig").write_text(
+                f"[user]\n\tname = {hostile}\n\temail = {hostile}@invalid\n", encoding="utf-8"
+            )
+            subprocess.run(["git", "config", "user.name", hostile], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", f"{hostile}@invalid"], cwd=root, check=True)
+            env = release.safe_env(Path(directory) / "clean-home")
+            env.update(
+                {
+                    "HOME": str(home),
+                    "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
+                    "GIT_AUTHOR_NAME": hostile,
+                    "GIT_AUTHOR_EMAIL": f"{hostile}@invalid",
+                    "GIT_COMMITTER_NAME": hostile,
+                    "GIT_COMMITTER_EMAIL": f"{hostile}@invalid",
+                    "GIT_CONFIG_COUNT": "2",
+                    "GIT_CONFIG_KEY_0": "user.name",
+                    "GIT_CONFIG_VALUE_0": hostile,
+                    "GIT_CONFIG_KEY_1": "user.email",
+                    "GIT_CONFIG_VALUE_1": f"{hostile}@invalid",
+                }
+            )
+            with patch.object(release, "ROOT", root), patch.object(release, "run_guard"):
+                release.create_annotated_tag(
+                    "v0.1.0-rc3", commit, 1_000_000_000 + 700_000_000, env
+                )
+            tag = subprocess.run(
+                ["git", "cat-file", "tag", "refs/tags/v0.1.0-rc3"],
+                cwd=root,
+                check=True,
+                text=True,
+                capture_output=True,
+            ).stdout
+            self.assertIn("tagger Teseus Release <release-bot@users.noreply.github.com>", tag)
+            self.assertNotIn(hostile, tag)
+
+    def test_post_tag_guard_failure_removes_only_local_tag_ref(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            root.mkdir()
+            commit = self.make_git_fixture(root)
+            env = release.safe_env(Path(directory) / "home")
+            with (
+                patch.object(release, "ROOT", root),
+                patch.object(release, "run_guard", side_effect=release.ReleaseError("blocked")),
+            ):
+                with self.assertRaisesRegex(release.ReleaseError, "blocked"):
+                    release.create_annotated_tag(
+                        "v0.1.0-rc3", commit, 1_000_000_000 + 700_000_000, env
+                    )
+            result = subprocess.run(
+                ["git", "show-ref", "--verify", "--quiet", "refs/tags/v0.1.0-rc3"], cwd=root
+            )
+            self.assertNotEqual(result.returncode, 0)
 
     def test_guard_scans_commit_and_annotated_tag_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

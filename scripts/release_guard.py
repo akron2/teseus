@@ -110,7 +110,6 @@ def history_metadata() -> dict[str, set[str]]:
         else None
     )
     findings: dict[str, set[str]] = {}
-    private_hostname = private_hostname_rule()
     for object_id in sorted(object_ids):
         try:
             object_type = git_output("cat-file", "-t", object_id).decode("ascii").strip()
@@ -120,29 +119,42 @@ def history_metadata() -> dict[str, set[str]]:
         except RuntimeError:
             raise RuntimeError("Git history inspection failed") from None
 
-        header, separator, message = raw.partition(b"\n\n")
-        searchable_lines = []
-        for line in header.splitlines():
-            # Git identity timestamps are machine-generated metadata, not numeric identifiers.
-            line = re.sub(rb"\s[0-9]+ [+-][0-9]{4}$", b"", line)
-            searchable_lines.append(line)
-        searchable = b"\n".join(searchable_lines)
-        if separator:
-            searchable += b"\n" + message
-        decoded = searchable.decode("utf-8", errors="replace")
-        for label, pattern in [*content_rules(), ("private hostname", private_hostname)]:
-            if pattern.search(decoded):
-                findings.setdefault(label, set()).add(object_id)
-        if hostname_pattern and hostname_pattern.search(decoded):
-            findings.setdefault("local hostname", set()).add(object_id)
+        for label in metadata_findings(raw):
+            findings.setdefault(label, set()).add(object_id)
 
     for line in references.decode("utf-8", errors="replace").splitlines():
         refname = line.split("\t", 1)[0]
-        for label, pattern in [*content_rules(), ("private hostname", private_hostname)]:
+        for label, pattern in [*content_rules(), ("private hostname", private_hostname_rule())]:
             if pattern.search(refname):
                 findings.setdefault(label, set()).add("ref:" + refname)
         if hostname_pattern and hostname_pattern.search(refname):
             findings.setdefault("local hostname", set()).add("ref:" + refname)
+    return findings
+
+
+def metadata_findings(raw: bytes) -> set[str]:
+    """Return privacy finding labels for commit/tag metadata without exposing matches."""
+    hostname = socket.gethostname().strip()
+    hostname_pattern = (
+        re.compile(r"(?i)(?<![a-z0-9-])" + re.escape(hostname) + r"(?![a-z0-9-])")
+        if hostname
+        else None
+    )
+    header, separator, message = raw.partition(b"\n\n")
+    searchable_lines = [
+        re.sub(rb"\s[0-9]+ [+-][0-9]{4}$", b"", line)
+        for line in header.splitlines()
+    ]
+    searchable = b"\n".join(searchable_lines)
+    if separator:
+        searchable += b"\n" + message
+    decoded = searchable.decode("utf-8", errors="replace")
+    findings = {
+        label for label, pattern in [*content_rules(), ("private hostname", private_hostname_rule())]
+        if pattern.search(decoded)
+    }
+    if hostname_pattern and hostname_pattern.search(decoded):
+        findings.add("local hostname")
     return findings
 
 

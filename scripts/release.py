@@ -15,12 +15,20 @@ import tomllib
 import venv
 from pathlib import Path
 
+try:
+    from . import release_guard
+except ImportError:  # Direct execution as `python scripts/release.py`.
+    import release_guard
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_RE = re.compile(
     r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-((?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
     r"(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$"
 )
+RETIRED_TAGS = frozenset({"v0.1.0-rc2"})
+TAGGER_NAME = "Teseus Release"
+TAGGER_EMAIL = "release-bot@users.noreply.github.com"
 
 
 class ReleaseError(RuntimeError):
@@ -86,6 +94,8 @@ def parse_version(tag: str) -> tuple[str, str | None]:
 
 
 def check_version(tag: str) -> tuple[str, str | None]:
+    if tag in RETIRED_TAGS:
+        raise ReleaseError("this failed release tag is retired and must never be reused")
     core, prerelease = parse_version(tag)
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     source_version = metadata["project"]["version"]
@@ -100,6 +110,62 @@ def check_version(tag: str) -> tuple[str, str | None]:
     if not re.search(rf"^## {re.escape(tag.removeprefix('v'))}(?:\s|—)", changelog, re.MULTILINE):
         raise ReleaseError("CHANGELOG.md has no entry for the requested tag")
     return core, prerelease
+
+
+def tag_metadata(tag: str, commit: str, timestamp: int) -> bytes:
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        raise ReleaseError("release target is not a valid Git object ID")
+    if not VERSION_RE.fullmatch(tag):
+        raise ReleaseError("tag must be a valid v-prefixed semantic version")
+    return (
+        f"object {commit}\ntype commit\ntag {tag}\n"
+        f"tagger {TAGGER_NAME} <{TAGGER_EMAIL}> {timestamp} +0000\n\n"
+        f"Release {tag}\n"
+    ).encode("utf-8")
+
+
+def preflight_tag_metadata(tag: str, commit: str, timestamp: int) -> bytes:
+    metadata = tag_metadata(tag, commit, timestamp)
+    if release_guard.metadata_findings(metadata):
+        raise ReleaseError("future tag metadata failed the release/privacy guard")
+    return metadata
+
+
+def create_annotated_tag(tag: str, commit: str, timestamp: int, env: dict[str, str]) -> None:
+    """Create the exact preflighted annotated tag, then guard all reachable metadata."""
+    metadata = preflight_tag_metadata(tag, commit, timestamp)
+    try:
+        result = subprocess.run(
+            ["git", "mktag"], cwd=ROOT, env=env, input=metadata,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+        )
+    except OSError as exc:
+        raise ReleaseError(f"could not create annotated tag ({type(exc).__name__})") from None
+    if result.returncode:
+        raise ReleaseError("annotated tag object creation failed")
+    tag_object = result.stdout.decode("ascii", errors="replace").strip()
+    zero_oid = "0" * len(commit)
+    try:
+        result = subprocess.run(
+            ["git", "update-ref", f"refs/tags/{tag}", tag_object, zero_oid],
+            cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+    except OSError as exc:
+        raise ReleaseError(f"could not install annotated tag ref ({type(exc).__name__})") from None
+    if result.returncode:
+        raise ReleaseError("annotated tag ref creation failed; an existing ref was not replaced")
+    try:
+        run_guard(env)
+    except Exception as exc:
+        cleanup = subprocess.run(
+            ["git", "update-ref", "-d", f"refs/tags/{tag}", tag_object],
+            cwd=ROOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+        if cleanup.returncode:
+            raise ReleaseError("post-tag guard failed and local tag cleanup also failed") from None
+        if isinstance(exc, ReleaseError):
+            raise
+        raise ReleaseError("post-tag guard failed; local tag ref was removed") from None
 
 
 def check_repository(tag: str, ci: bool, dry_run: bool = False) -> str:
@@ -253,6 +319,9 @@ def install_and_smoke(wheel: Path, sdist: Path, scratch: Path, source: Path) -> 
 def verify(tag: str, *, ci: bool, dry_run: bool = False) -> tuple[str, list[Path]]:
     check_version(tag)
     commit = check_repository(tag, ci, dry_run)
+    if not ci:
+        timestamp = int(git("show", "-s", "--format=%ct", commit))
+        preflight_tag_metadata(tag, commit, timestamp)
     print(f"Release target: {tag} at {commit}")
     with tempfile.TemporaryDirectory(prefix="teseus-release-") as temporary:
         scratch = Path(temporary)
@@ -313,10 +382,10 @@ def main() -> int:
         elif args.dry_run:
             print(f"DRY RUN passed. Would create annotated tag {args.tag} at {commit}; no tag created.")
         else:
-            command(
-                ["git", "tag", "-a", args.tag, "-m", f"Release {args.tag}"],
-                label="annotated tag creation",
-            )
+            timestamp = int(git("show", "-s", "--format=%ct", commit))
+            with tempfile.TemporaryDirectory(prefix="teseus-tag-") as temporary:
+                tag_env = safe_env(Path(temporary) / "home")
+                create_annotated_tag(args.tag, commit, timestamp, tag_env)
             print(f"Created annotated tag {args.tag}; push it with: git push origin {args.tag}")
         return 0
     except (ReleaseError, OSError, KeyError, ValueError, tomllib.TOMLDecodeError) as exc:

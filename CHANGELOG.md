@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-rc3 — 2026-09-28
+
+Retire the failed prior release candidate and make release-tag metadata
+independent of ambient machine identity. Preflight the exact neutral annotated
+tag metadata and remove a newly created local tag if the post-creation privacy
+guard fails.
+
 ## 0.1.0-rc2 — 2026-09-28
 
 Document and automate the reviewed public release process. Add a guarded
